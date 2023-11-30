@@ -125,8 +125,111 @@ GROUP BY s.plan_id, plan_name;
 ======================================================================================================================================================================================================================
   
 7. What is the customer count and percentage breakdown of all 5 plan_name values at 2020-12-31?
+    WITH CTE AS
+    (
+    SELECT *, RANK() OVER(PARTITION BY customer_id ORDER BY start_date desc) as rnk
+    FROM foodie_fi.subscriptions 
+    WHERE start_date <= '2020-12-31'
+    )
+    
+    SELECT plan_name, p.plan_id, COUNT(customer_id) AS customercount,
+    ROUND((1.0* COUNT(Customer_id)/(SELECT COUNT( DISTINCT (customer_id)) FROM foodie_fi.subscriptions))*100,1) AS percentage
+    FROM CTE
+    LEFT JOIN foodie_fi.plans p
+    ON p.plan_id = CTE.plan_id
+    WHERE rnk =1
+    GROUP BY p.plan_id, plan_name;
+
+| plan_name     | plan_id | customercount | percentage |
+| ------------- | ------- | ------------- | ---------- |
+| trial         | 0       | 19            | 1.9        |
+| basic monthly | 1       | 224           | 22.4       |
+| pro monthly   | 2       | 326           | 32.6       |
+| pro annual    | 3       | 195           | 19.5       |
+| churn         | 4       | 236           | 23.6       |
+======================================================================================================================================================================================================================
+  
 8. How many customers have upgraded to an annual plan in 2020?
+  SELECT COUNT(customer_id),
+    ROUND((1.0* COUNT(Customer_id)/(SELECT COUNT( DISTINCT (customer_id)) FROM foodie_fi.subscriptions))*100,1) AS planpercentage
+    FROM foodie_fi.subscriptions 
+    WHERE plan_id = 3 AND EXTRACT(YEAR FROM start_date) = 2020
+    GROUP BY plan_id;
+
+| count | planpercentage |
+| ----- | -------------- |
+| 195   | 19.5           |
+======================================================================================================================================================================================================================
+  
 9. How many days on average does it take for a customer to an annual plan from the day they join Foodie-Fi?
+  WITH CTE AS
+    (
+    SELECT EXTRACT(DAY from MAX(start_date::timestamp)- MIN(start_date ::timestamp)) AS days
+    FROM foodie_fi.subscriptions 
+    WHERE customer_id IN ( SELECT DISTINCT(customer_id) FROM foodie_fi.subscriptions 
+         WHERE  plan_id = 3 )
+    GROUP BY customer_id
+    )
+    
+    SELECT AVG(days) AS avg_days
+    FROM CTE;
+
+| avg_days           |
+| ------------------ |
+| 113.10852713178295 |
+======================================================================================================================================================================================================================
+
 10. Can you further breakdown this average value into 30 day periods (i.e. 0-30 days, 31-60 days etc)
+  WITH CTE AS
+    (
+    SELECT EXTRACT(DAY from MAX(start_date::timestamp)- MIN(start_date ::timestamp)) AS days,
+    FLOOR(EXTRACT(DAY from MAX(start_date::timestamp)- MIN(start_date ::timestamp))/30)
+    AS bins
+    FROM foodie_fi.subscriptions 
+    WHERE customer_id IN ( SELECT DISTINCT(customer_id) FROM foodie_fi.subscriptions 
+         WHERE  plan_id = 3 )
+    GROUP BY customer_id
+    )
+    
+    SELECT CONCAT((bins*30)+1, '-', FLOOR((bins+1)*30)) AS bins,
+    AVG(days) AS avg_days
+    FROM CTE
+    GROUP BY bins
+    ORDER BY (bins*30)+1;
+
+| bins    | avg_days           |
+| ------- | ------------------ |
+| 1-30    | 9.652173913043478  |
+| 31-60   | 41.17391304347826  |
+| 61-90   | 70.5625            |
+| 91-120  | 99.88235294117646  |
+| 121-150 | 133.04651162790697 |
+| 151-180 | 161.54285714285714 |
+| 181-210 | 190.33333333333334 |
+| 211-240 | 224.25             |
+| 241-270 | 257.2              |
+| 271-300 | 285                |
+| 301-330 | 327                |
+| 331-360 | 346                |
+| 361-390 | 372                |
+| 391-420 | 414.5              |
+| 421-450 | 446                |
+| 451-480 | 463                |
+======================================================================================================================================================================================================================
+  
 11. How many customers downgraded from a pro monthly to a basic monthly plan in 2020?
+ WITH CTE AS
+    (
+    SELECT *, LAG(plan_id) OVER(PARTITION BY customer_id ORDER BY start_date) AS prev_plan
+    FROM foodie_fi.subscriptions 
+    )
+    
+    SELECT COUNT(Customer_id) 
+    FROM CTE
+    WHERE prev_plan = 2 AND plan_id =1;
+
+| count |
+| ----- |
+| 0     |
+
 
